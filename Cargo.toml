@@ -1,6 +1,12 @@
 [package]
 name = "calset"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+icalendar = "0.16"
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
