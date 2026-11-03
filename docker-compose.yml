@@ -1,4 +1,17 @@
 services:
+  radicale-init:
+    image: alpine
+    container_name: radicale-init
+    profiles: ["init"]
+    volumes:
+      - radicale-users:/etc/radicale/auth
+      - radicale-data:/var/lib/radicale/collections
+      - ./radicale/entrypoint.sh:/entrypoint.sh:ro
+    environment:
+        - CAL_USER=${CAL_USER:-my_user}
+        - CAL_PASS=${CAL_PASS:-my_password}
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+
   radicale:
     image: tomsquest/docker-radicale:latest
     container_name: radicale
@@ -10,6 +23,12 @@ services:
       - radicale-data:/var/lib/radicale/collections
       - radicale-users:/etc/radicale/auth
     user: "2999:2999"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -u $${CAL_USER:-my-user}:$${CAL_PASS:-my-password} http://localhost:5232/ || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_interval: 10s
 
   calset-bot:
     build: .
@@ -24,7 +43,5 @@ services:
 volumes:
   radicale-data:
     name: radicale-data
-    external: true
   radicale-users:
     name: radicale-users
-    external: true

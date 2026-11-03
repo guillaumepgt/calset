@@ -27,7 +27,6 @@ impl CalDavClient {
         format!("{}/{}/{}/", self.base_url, self.user, self.calendar_name)
     }
 
-    /// Initialise le calendrier via MKCALENDAR (idempotent au démarrage du bot)
     pub async fn ensure_calendar_exists(&self) -> Result<()> {
         let method = Method::from_bytes(b"MKCALENDAR")
             .context("Méthode HTTP MKCALENDAR invalide")?;
@@ -55,7 +54,6 @@ impl CalDavClient {
         Ok(())
     }
 
-    /// Crée et envoie un événement .ics vers Radicale via PUT
     pub async fn push_event(
         &self,
         summary: &str,
@@ -65,7 +63,6 @@ impl CalDavClient {
     ) -> Result<String> {
         let event_uid = Uuid::new_v4().to_string();
 
-        // Construction du payload iCalendar RFC 5545
         let event = Event::new()
             .uid(&event_uid)
             .summary(summary)
@@ -77,7 +74,6 @@ impl CalDavClient {
         let calendar = Calendar::new().push(event).done();
         let ics_payload = calendar.to_string();
 
-        // URL cible : http://127.0.0.1:5232/mon_utilisateur/agenda/<UID>.ics
         let event_url = format!("{}{}.ics", self.calendar_url(), event_uid);
 
         let response = self
@@ -109,10 +105,8 @@ async fn main() -> Result<()> {
         "agenda",
     );
 
-    // 1. S'assurer que l'agenda existe au lancement du microservice
     client.ensure_calendar_exists().await?;
 
-    // 2. Créer un événement de test (dans 1 heure, durée 45 min)
     let start = Utc::now() + Duration::hours(1);
     let end = start + Duration::minutes(45);
 

@@ -1,7 +1,7 @@
 # RUN
 
 ```bash
-docker compose -f radicale/init.yml run --rm init
+docker compose run --rm radicale-init
 docker compose up -d
 ```
 
