@@ -8,5 +8,12 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 icalendar = "0.16"
 chrono = "0.4"
+chrono-tz = "0.10.4"
 uuid = { version = "1", features = ["v4"] }
+serde = "1.0.229"
+serde_json = "1.0.154"
+quick-xml = "0.42.0"
 anyhow = "1"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
