@@ -1,4 +1,4 @@
-use calset::config::AppConfig;
+use calset::config;
 use chrono_tz::Tz;
 
 #[test]
@@ -12,7 +12,7 @@ fn test_missing_env_vars() {
     let old_user = std::env::var("CAL_USER").ok();
     std::env::remove_var("CAL_USER");
 
-    let config_result = AppConfig::from_env();
+    let config_result = config::load_from_env();
     assert!(config_result.is_err());
     let error_message = config_result.unwrap_err().to_string();
     assert!(error_message.contains("CAL_USER"));
