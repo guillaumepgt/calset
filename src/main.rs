@@ -1,3 +1,4 @@
+use calset::config::AppConfig;
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use icalendar::{Calendar, Component, Event, EventLike};
@@ -98,11 +99,15 @@ impl CalDavClient {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
+    let config = AppConfig::from_env()?;
+    println!("Start with user '{}' on '{}'", config.cal_user, config.radicale_url);
+
     let client = CalDavClient::new(
-        "http://127.0.0.1:5232",
-        "mon_utilisateur",
-        "mon_mot_de_passe_robuste",
-        "agenda",
+        &config.radicale_url,
+        &config.cal_user,
+        &config.cal_pass,
+        &config.cal_name,
     );
 
     client.ensure_calendar_exists().await?;
