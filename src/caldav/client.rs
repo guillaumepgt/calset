@@ -44,17 +44,22 @@ impl CalDavClient {
             .context("Échec de la connexion à Radicale")?;
 
         match response.status() {
-            StatusCode::CREATED => info!("Calendrier '{}' créé avec succès.", self.calendar_name),
-            // Si le calendrier existe déjà, Radicale renvoie généralement 405 Method Not Allowed ou 409 Conflict
-            StatusCode::METHOD_NOT_ALLOWED | StatusCode::CONFLICT | StatusCode::OK => {
-                info!("Le calendrier '{}' existe déjà.", self.calendar_name);
-            }
+            StatusCode::CREATED =>
+                info!("Calendar '{}' created successfully.", self.calendar_name),
+
+            StatusCode::METHOD_NOT_ALLOWED | StatusCode::CONFLICT | StatusCode::OK =>
+                info!("The calendar '{}' already exists.", self.calendar_name),
+
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN =>
+                anyhow::bail!(
+              "CalDAV authentication failed ({}) : check CAL_USER and CAL_PASS",
+              response.status()),
+
             status => {
                 let body = response.text().await.unwrap_or_default();
-                anyhow::bail!("Erreur lors de MKCALENDAR ({}): {}", status, body);
+                anyhow::bail!("Failed to create calendar ({}): {}", status, body);
             }
         }
-
         Ok(())
     }
 
