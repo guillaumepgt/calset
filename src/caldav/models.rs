@@ -13,7 +13,8 @@ pub struct CalDavClient {
 #[derive(Debug, Clone)]
 pub struct CreateEventPayload {
     pub summary: String,
-    pub description: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
 }
