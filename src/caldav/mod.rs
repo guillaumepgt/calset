@@ -1,4 +1,4 @@
 pub mod client;
-pub mod types;
+pub mod models;
 
-pub use types::{CalDavClient, CreateEventPayload};
+pub use models::{CalDavClient, CreateEventPayload};

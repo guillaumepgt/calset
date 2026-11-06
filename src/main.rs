@@ -21,12 +21,13 @@ async fn main() -> Result<()> {
 
     let payload = CreateEventPayload {
         summary: "Appeler le comptable".to_string(),
-        description: "Tâche issue de Telegram".to_string(),
+        description: Some("Tâche issue de Telegram".to_string()),
+        location: Some("Bureau".to_string()),
         start,
         end,
     };
 
-    let uid = caldav.push_event(payload).await?;
+    let uid = caldav.create_event(payload).await?;
     info!("Événement synchronisé (UID: {})", uid);
 
     Ok(())
