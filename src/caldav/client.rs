@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use icalendar::{Calendar, Component, Event, EventLike};
 use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
 use tracing::info;
@@ -86,7 +87,7 @@ impl CalDavClient {
         if let Some(location) = payload.location {
             event.location(&location);
         }
-        
+
         let event = event.done();
         let calendar = Calendar::new().push(event).done();
         let ics_payload = calendar.to_string();
@@ -110,5 +111,47 @@ impl CalDavClient {
         }
 
         Ok(event_uid)
+    }
+
+    pub async fn list_events(&self, start_utc: DateTime<Utc>, end_utc: DateTime<Utc>) -> Result<String> {
+        if start_utc >= end_utc {anyhow::bail!("The start date must be earlier than the end date");}
+
+        let start = start_utc.format("%Y%m%dT%H%M%SZ").to_string();
+        let end = end_utc.format("%Y%m%dT%H%M%SZ").to_string();
+        let calendar_query = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+            <c:calendar-query xmlns:c="urn:ietf:params:xml:ns:caldav">
+                <d:prop xmlns:d="DAV:">
+                    <d:getetag/>
+                    <c:calendar-data/>
+                </d:prop>
+                <c:filter>
+                    <c:comp-filter name="VCALENDAR">
+                        <c:comp-filter name="VEVENT">
+                            <c:time-range start="{start}" end="{end}"/>
+                        </c:comp-filter>
+                    </c:comp-filter>
+                </c:filter>
+            </c:calendar-query>"#
+        );
+
+        let method = Method::from_bytes(b"REPORT")
+            .context("Invalid HTTP method REPORT")?;
+
+        let response = self
+            .http
+            .request(method, self.calendar_url())
+            .basic_auth(&self.user, Some(&self.pass))
+            .header(CONTENT_TYPE, "application/xml; charset=utf-8")
+            .header("Depth", "1")
+            .body(calendar_query)
+            .send().await.context("Failed to send calendar query (REPORT)")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to list events ({}): {}", status, body);
+        }
+        Ok(response.text().await.context("Failed to read response body for list events")?)
     }
 }
