@@ -1,5 +1,20 @@
-use calset::caldav::{CreateEventPayload, EventSchedule};
+use calset::caldav::{CalDavClient, CreateEventPayload, EventSchedule};
 use chrono::{NaiveDate};
+use wiremock::MockServer;
+
+pub async fn setup_mock_client() -> (MockServer, CalDavClient) {
+    let mock_server = MockServer::start().await;
+
+    let client = CalDavClient::new(
+        &mock_server.uri(),
+        "test_user",
+        "test_pass",
+        "calendar",
+    );
+
+    (mock_server, client)
+    
+}
 
 pub fn dummy_payload_timed() -> CreateEventPayload {
     CreateEventPayload {
