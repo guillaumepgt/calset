@@ -4,7 +4,7 @@ use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
 use tracing::info;
 use uuid::Uuid;
 
-use super::models::{CalDavClient, CreateEventPayload};
+use super::models::{CalDavClient, CreateEventPayload, EventSchedule};
 use crate::config::AppConfig;
 
 impl CalDavClient {
@@ -68,17 +68,25 @@ impl CalDavClient {
 
         let mut event = Event::new();
         event.uid(&event_uid)
-            .summary(&payload.summary)
-            .starts(payload.start)
-            .ends(payload.end);
+            .summary(&payload.summary);
+
+        match payload.schedule {
+            EventSchedule::Timed { start, end } => {
+                event.starts(start).ends(end);
+            }
+            EventSchedule::AllDay { start, end } => {
+                event.starts(start).ends(end);
+            }
+        }
 
         if let Some(description) = payload.description {
             event.description(&description);
         }
+
         if let Some(location) = payload.location {
             event.location(&location);
         }
-
+        
         let event = event.done();
         let calendar = Calendar::new().push(event).done();
         let ics_payload = calendar.to_string();

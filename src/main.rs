@@ -1,5 +1,5 @@
 use anyhow::Result;
-use calset::caldav::{CalDavClient, CreateEventPayload};
+use calset::caldav::{CalDavClient, CreateEventPayload, EventSchedule};
 use calset::config;
 use calset::telemetry;
 use chrono::{Duration, Utc};
@@ -23,8 +23,7 @@ async fn main() -> Result<()> {
         summary: "Appeler le comptable".to_string(),
         description: Some("Tâche issue de Telegram".to_string()),
         location: Some("Bureau".to_string()),
-        start,
-        end,
+        schedule: EventSchedule::timed(start, end),
     };
 
     let uid = caldav.create_event(payload).await?;
