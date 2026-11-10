@@ -5,7 +5,7 @@ use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
 use tracing::info;
 use uuid::Uuid;
 
-use super::models::{CalDavClient, CreateEventPayload, EventSchedule};
+use super::models::{CalDavClient, CalendarEvent, CreateEventPayload, EventSchedule};
 use crate::config::AppConfig;
 
 impl CalDavClient {
@@ -113,7 +113,7 @@ impl CalDavClient {
         Ok(event_uid)
     }
 
-    pub async fn list_events(&self, start_utc: DateTime<Utc>, end_utc: DateTime<Utc>) -> Result<String> {
+    pub async fn list_events(&self, start_utc: DateTime<Utc>, end_utc: DateTime<Utc>) -> Result<Vec<CalendarEvent>> {
         if start_utc >= end_utc {anyhow::bail!("The start date must be earlier than the end date");}
 
         let start = start_utc.format("%Y%m%dT%H%M%SZ").to_string();
@@ -152,6 +152,7 @@ impl CalDavClient {
             let body = response.text().await.unwrap_or_default();
             anyhow::bail!("Failed to list events ({}): {}", status, body);
         }
-        Ok(response.text().await.context("Failed to read response body for list events")?)
+        let body = response.text().await.context("Failed to read response body for list events")?;
+        super::parser::parse_multistatus(&body)
     }
 }

@@ -45,3 +45,12 @@ impl EventSchedule {
         Self::AllDay { start, end }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalendarEvent {
+    pub uid: String,
+    pub summary: String,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub schedule: EventSchedule,
+}
