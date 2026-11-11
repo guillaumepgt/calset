@@ -6,5 +6,5 @@ mod ensure_calendar;
 mod create_event;
 #[path = "caldav_test/list_events.rs"]
 mod list_events;
-#[path = "caldav_test/xml_test.rs"]
-mod xml_test;
+#[path = "caldav_test/update_event.rs"]
+mod update_event;

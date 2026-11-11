@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use icalendar::{Calendar, Component, Event, EventLike};
 use reqwest::{header::CONTENT_TYPE, Client, Method, StatusCode};
 use tracing::info;
 use uuid::Uuid;
 
-use super::models::{CalDavClient, CalendarEvent, CreateEventPayload, EventSchedule};
+use super::calendar::event::{build_created_ics, build_updated_ics};
+use super::models::{CalDavClient, CalendarEvent, CreateEventPayload, UpdateEventPayload};
+use super::xml::parse_multistatus;
 use crate::config::AppConfig;
 
 impl CalDavClient {
@@ -45,17 +46,18 @@ impl CalDavClient {
             .context("Échec de la connexion à Radicale")?;
 
         match response.status() {
-            StatusCode::CREATED =>
-                info!("Calendar '{}' created successfully.", self.calendar_name),
-
-            StatusCode::METHOD_NOT_ALLOWED | StatusCode::CONFLICT | StatusCode::OK =>
-                info!("The calendar '{}' already exists.", self.calendar_name),
-
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN =>
+            StatusCode::CREATED => {
+                info!("Calendar '{}' created successfully.", self.calendar_name)
+            }
+            StatusCode::METHOD_NOT_ALLOWED | StatusCode::CONFLICT | StatusCode::OK => {
+                info!("The calendar '{}' already exists.", self.calendar_name)
+            }
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 anyhow::bail!(
-              "CalDAV authentication failed ({}) : check CAL_USER and CAL_PASS",
-              response.status()),
-
+                    "CalDAV authentication failed ({}) : check CAL_USER and CAL_PASS",
+                    response.status()
+                )
+            }
             status => {
                 let body = response.text().await.unwrap_or_default();
                 anyhow::bail!("Failed to create calendar ({}): {}", status, body);
@@ -66,33 +68,31 @@ impl CalDavClient {
 
     pub async fn create_event(&self, payload: CreateEventPayload) -> Result<String> {
         let event_uid = Uuid::new_v4().to_string();
+        let ics_payload = build_created_ics(&event_uid, &payload);
 
-        let mut event = Event::new();
-        event.uid(&event_uid)
-            .summary(&payload.summary);
+        self.put_ics(&event_uid, ics_payload)
+            .await
+            .context("Échec de création de l'événement")?;
 
-        match payload.schedule {
-            EventSchedule::Timed { start, end } => {
-                event.starts(start).ends(end);
-            }
-            EventSchedule::AllDay { start, end } => {
-                event.starts(start).ends(end);
-            }
-        }
+        Ok(event_uid)
+    }
 
-        if let Some(description) = payload.description {
-            event.description(&description);
-        }
+    pub async fn update_event(&self, uid: &str, payload: UpdateEventPayload) -> Result<()> {
+        let raw_ics = self
+            .get_event_raw(uid)
+            .await
+            .context("Failed to retrieve the event for update")?;
 
-        if let Some(location) = payload.location {
-            event.location(&location);
-        }
+        let ics_payload = build_updated_ics(&raw_ics, uid, payload)
+            .context("Failed to build updated ICS payload")?;
 
-        let event = event.done();
-        let calendar = Calendar::new().push(event).done();
-        let ics_payload = calendar.to_string();
+        self.put_ics(uid, ics_payload)
+            .await
+            .context("Failed to update event")
+    }
 
-        let event_url = format!("{}{}.ics", self.calendar_url(), event_uid);
+    async fn put_ics(&self, uid: &str, ics_payload: String) -> Result<()> {
+        let event_url = format!("{}{}.ics", self.calendar_url(), uid);
 
         let response = self
             .http
@@ -107,14 +107,20 @@ impl CalDavClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Échec de création de l'événement ({}): {}", status, body);
+            anyhow::bail!("Erreur HTTP PUT ({}): {}", status, body);
         }
 
-        Ok(event_uid)
+        Ok(())
     }
 
-    pub async fn list_events(&self, start_utc: DateTime<Utc>, end_utc: DateTime<Utc>) -> Result<Vec<CalendarEvent>> {
-        if start_utc >= end_utc {anyhow::bail!("The start date must be earlier than the end date");}
+    pub async fn list_events(
+        &self,
+        start_utc: DateTime<Utc>,
+        end_utc: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEvent>> {
+        if start_utc >= end_utc {
+            anyhow::bail!("The start date must be earlier than the end date");
+        }
 
         let start = start_utc.format("%Y%m%dT%H%M%SZ").to_string();
         let end = end_utc.format("%Y%m%dT%H%M%SZ").to_string();
@@ -135,8 +141,7 @@ impl CalDavClient {
             </c:calendar-query>"#
         );
 
-        let method = Method::from_bytes(b"REPORT")
-            .context("Invalid HTTP method REPORT")?;
+        let method = Method::from_bytes(b"REPORT").context("Invalid HTTP method REPORT")?;
 
         let response = self
             .http
@@ -145,14 +150,64 @@ impl CalDavClient {
             .header(CONTENT_TYPE, "application/xml; charset=utf-8")
             .header("Depth", "1")
             .body(calendar_query)
-            .send().await.context("Failed to send calendar query (REPORT)")?;
+            .send()
+            .await
+            .context("Failed to send calendar query (REPORT)")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             anyhow::bail!("Failed to list events ({}): {}", status, body);
         }
-        let body = response.text().await.context("Failed to read response body for list events")?;
-        super::parser::parse_multistatus(&body)
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body for list events")?;
+        parse_multistatus(&body)
+    }
+
+    pub async fn get_event_raw(&self, uid: &str) -> Result<String> {
+        let event_url = format!("{}{}.ics", self.calendar_url(), uid);
+
+        let response = self
+            .http
+            .get(&event_url)
+            .basic_auth(&self.user, Some(&self.pass))
+            .send()
+            .await?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            anyhow::bail!("Event not found with this UID '{}' (404)", uid);
+        }
+
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "Failed to retrieve the event '{}' : {}",
+                uid,
+                response.status()
+            );
+        }
+        Ok(response.text().await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[tokio::test]
+    async fn test_list_events_invalid_range() {
+        let client = CalDavClient::new("http://localhost", "user", "pass", "calendar");
+
+        let start_utc = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let end_utc = Utc.with_ymd_and_hms(2026, 1, 31, 23, 59, 59).unwrap();
+
+        let result = client.list_events(start_utc, end_utc).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "The start date must be earlier than the end date"
+        );
     }
 }
